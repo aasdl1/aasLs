@@ -47,18 +47,34 @@ void saveSingleFileInfo(char *, aasFileInfo *);
 unsigned long int printSingleFileInfo(char *);
 void printAllResults(aasFileInfo filesInfos[], int size, int , int , int, int);
 int intLength(unsigned long int);
+void listOneItemNoDetail(char *);
+void listOneItemWithDetail(char *);
+int charCmp(const void *a, const void *b);
 
 int main(int argc, char *argv[]){
 
     // process with the input params
     char * path;        // 文件路径
+
+    // 查看是否有-l
+    int lmode = 0;
+    for (int i = 0; i < argc - 1; i++){
+        // printf("v:%s\n",argv[i+1]);
+        if (strcmp(argv[i+1], "-l")==0){
+            lmode = 1;
+            break;
+        }
+    }
     
-    for (int i = 0; (i < argc)||(argc==1); i++){
+    for (int i = 0; (i < argc-1)||(argc==1); i++){
         if (argc == 1){     //指定当前目录
             path = ".";
         }
         else{
             path = argv[i+1];
+            if (strcmp(path, "-l")==0){
+                continue;
+            }
         }
 
         // 打印目录或文件
@@ -69,91 +85,137 @@ int main(int argc, char *argv[]){
             printf("\n%s:\n", path);
         }
 
-        // max 255个
-        aasFileInfo filesInfos[BUFFLEN];
-        
-
-        struct stat buff;
-        stat(path, &buff);
-        if (S_ISDIR(buff.st_mode)){
-            // 目录
-            // printf("[%s] is a dir\n", path);
-            struct dirent *filename;
-            DIR *dp = opendir(path);
-
-            // 数据块个数
-            unsigned long int totalBlocks = 0;
-            unsigned long int tmpBlock = 0;
-
-            // 组名,Size,和Username的最大长度
-            int maxGroupLength = 0, maxSizeLength = 0, maxUserNameSize = 0, maxNlinkLength = 0;
-            unsigned long int maxNlink = 0, maxFileSize = 0;
-            
-            // 目录下文件个数
-            int fileLengths = 0;
-
-            // 切换目录到path中
-            int in = chdir(path);
-            // printf("\nin success:%d\n",in);
-
-            // 读完整个目录文件，readdir返回NULL
-            while (filename = readdir(dp)){
-                // 不判断隐藏目录
-                if ((strcmp(".", filename->d_name)==0)||(strcmp("..", filename->d_name)==0)){
-                    // printf("now filename:%s\n", filename->d_name);
-                    continue;
-
-                }
-
-
-                // tmpBlock = printSingleFileInfo(filename->d_name);
-                saveSingleFileInfo(filename->d_name, &filesInfos[fileLengths]);
-
-                maxGroupLength = (maxGroupLength > strlen(filesInfos[fileLengths].groupName))?maxGroupLength:strlen(filesInfos[fileLengths].groupName);
-                maxUserNameSize = (maxUserNameSize > strlen(filesInfos[fileLengths].userName))?maxUserNameSize:strlen(filesInfos[fileLengths].userName);
-                maxFileSize = (maxFileSize > filesInfos[fileLengths].st_size)?maxFileSize:filesInfos[fileLengths].st_size;
-                maxNlink = (maxNlink > filesInfos[fileLengths].st_nlink)?maxNlink:filesInfos[fileLengths].st_nlink;
-
-                fileLengths += 1;
-                // totalBlocks += tmpBlock;
-            }
-            maxNlinkLength = intLength(maxNlink);
-            maxSizeLength = intLength(maxFileSize);
-
-
-            printAllResults(filesInfos, fileLengths, maxGroupLength, maxSizeLength, maxUserNameSize, maxNlinkLength);
-      
-            // printf("usernSize:%d, intLength:%d, nlinkSize:%d\n", maxUserNameSize, maxSizeLength, maxNlinkLength);
-            // printf("总用量 %lu\n", totalBlocks);
+        // list 主要内容
+        if (lmode == 1){    // ls -l
+            // printf("lmode=1\n");
+            listOneItemWithDetail(path);
         }
         else{
-            // 非目录
-            // unsigned long int totalBlocks = 0;
-            // totalBlocks = printSingleFileInfo(path);
-            printSingleFileInfo(path);
-            // printf("总用量 %lu\n", totalBlocks);
+            //ls
+            // printf("lmode=0\n");
+            listOneItemNoDetail(path);
         }
 
+        // 只list一个
         if (argc == 1){
             return 0;
         }
     }
-
-
-
-    /*
-    char * filename = argv[1];
-    
-    printSingleFileInfo(filename);
-    */
-    /*  完整打开文件（对于link 则是指向内容的信息）
-    int fd = open(filename, O_RDONLY);
-    fstat(fd, &buff);
-    */
     
     return 0;
 }
+void listOneItemNoDetail(char * path){
+    char *fileNames[BUFFLEN];
+    int fileLengths = 0;
 
+    // 当前目录
+    char *cwd = NULL;
+    cwd = getcwd(NULL, 0);  //根据当前路径malloc
+
+    struct stat buff;
+    stat(path, &buff);
+    if (S_ISDIR(buff.st_mode)){
+        // 目录
+        struct dirent *filename;
+        DIR *dp = opendir(path);
+
+        // 切换目录到path中
+        int in = chdir(path);
+
+        // 读完整个目录文件，readdir返回NULL
+        while (filename = readdir(dp)){
+            // 不判断隐藏目录
+            if ((strcmp(".", filename->d_name)==0)||(strcmp("..", filename->d_name)==0)){
+                // printf("now filename:%s\n", filename->d_name);
+                continue;
+            }
+            fileNames[fileLengths++] = filename->d_name;
+        }
+        
+
+        // print it 
+        qsort(fileNames, fileLengths, sizeof(fileNames[0]), charCmp);
+        
+        for (int i = 0; i < fileLengths; i++){
+            printf("%s\t", fileNames[i]);
+        }
+
+
+        printf("\n");
+
+        // 执行完后返回原始目录
+        int out = chdir(cwd);
+        free(cwd);
+    }
+    else{
+        printf("%s\n",path);
+    }
+
+
+}
+
+
+void listOneItemWithDetail(char * path){
+    // max 255个
+    aasFileInfo filesInfos[BUFFLEN];
+
+    // 当前目录
+    char *cwd = NULL;
+    cwd = getcwd(NULL, 0);  //根据当前路径malloc
+    
+
+    struct stat buff;
+    stat(path, &buff);
+    if (S_ISDIR(buff.st_mode)){
+        // 目录
+        // printf("[%s] is a dir\n", path);
+        struct dirent *filename;
+        DIR *dp = opendir(path);
+
+        // 组名,Size,和Username的最大长度
+        int maxGroupLength = 0, maxSizeLength = 0, maxUserNameSize = 0, maxNlinkLength = 0;
+        unsigned long int maxNlink = 0, maxFileSize = 0;
+        
+        // 目录下文件个数
+        int fileLengths = 0;
+
+        // 切换目录到path中
+        int in = chdir(path);
+        // printf("\nin success:%d\n",in);
+
+        // 读完整个目录文件，readdir返回NULL
+        while (filename = readdir(dp)){
+            // 隐藏. 和 ..
+            if ((strcmp(".", filename->d_name)==0)||(strcmp("..", filename->d_name)==0)){
+                continue;
+
+            }
+
+            saveSingleFileInfo(filename->d_name, &filesInfos[fileLengths]);
+
+            maxGroupLength = (maxGroupLength > strlen(filesInfos[fileLengths].groupName))?maxGroupLength:strlen(filesInfos[fileLengths].groupName);
+            maxUserNameSize = (maxUserNameSize > strlen(filesInfos[fileLengths].userName))?maxUserNameSize:strlen(filesInfos[fileLengths].userName);
+            maxFileSize = (maxFileSize > filesInfos[fileLengths].st_size)?maxFileSize:filesInfos[fileLengths].st_size;
+            maxNlink = (maxNlink > filesInfos[fileLengths].st_nlink)?maxNlink:filesInfos[fileLengths].st_nlink;
+
+            fileLengths += 1;
+        }
+        maxNlinkLength = intLength(maxNlink);
+        maxSizeLength = intLength(maxFileSize);
+
+
+        printAllResults(filesInfos, fileLengths, maxGroupLength, maxSizeLength, maxUserNameSize, maxNlinkLength);
+
+        // 执行完后返回原始目录
+        int out = chdir(cwd);
+        free(cwd);
+
+    }
+    else{
+        // 非目录
+        printSingleFileInfo(path);
+    }
+}
 
 int intLength(unsigned long int num){
 
@@ -173,6 +235,9 @@ int aasFileCmp(const void *a,const void *b){
     );
 }
 
+int charCmp(const void *a, const void *b){
+    return strcmp(*((char **)a), *((char **)b));
+}
 
 
 int cmp(aasFileInfo a, aasFileInfo b){
@@ -305,9 +370,22 @@ unsigned long int printSingleFileInfo(char * filePath){
     }
 
     // printf("%s name: %s\n", filePath, fileName);
-    printf("%c%s%3lu %s %s %3ld %s %s\n",
-            fileT, fileAuth, buff.st_nlink,
-            userName, groupName, buff.st_size, timeBuf, fileName);
+    printf("%c%s%*lu %s%*s%s %*ld %s %s\n",
+            fileT, fileAuth, 
+            // st_nlink之前的空格数
+            intLength(buff.st_nlink)+1,
+            buff.st_nlink,
+            // 在userName和GroupName之间 添加 maxUserNameSize+1个空格
+            userName,
+            1, "",
+            groupName,
+            // maxGroupLength+maxSizeLength,
+            intLength(buff.st_size),         // 固定间隔
+            buff.st_size, timeBuf, fileName);
+
+    // printf("%c%s%3lu %s %s %3ld %s %s\n",
+    //         fileT, fileAuth, buff.st_nlink,
+    //         userName, groupName, buff.st_size, timeBuf, fileName);
 
 
     /*
@@ -327,8 +405,8 @@ unsigned long int printSingleFileInfo(char * filePath){
     */
 
     // 总用量中的size貌似是buff中除以2的
-    unsigned long int blocks = buff.st_blocks / 2;
-    return blocks;
+    // unsigned long int blocks = buff.st_blocks / 2;
+    // return blocks;
 }
 
 char * get_link_path(char * linkpath, char * buf, int count)
@@ -433,16 +511,4 @@ char * getFileName(char * filePath, char * fileName, int buffSize){
     fileName[lengths] = '\0';
     return fileName;
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
