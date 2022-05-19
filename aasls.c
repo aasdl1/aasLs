@@ -70,6 +70,9 @@ int main(int argc, char *argv[]){
         if (argc == 1){     //指定当前目录
             path = ".";
         }
+        else if ((argc == 2)&&(strcmp(argv[i+1],"-l")==0)){
+            path = ".";
+        }
         else{
             path = argv[i+1];
             if (strcmp(path, "-l")==0){
@@ -511,4 +514,3 @@ char * getFileName(char * filePath, char * fileName, int buffSize){
     fileName[lengths] = '\0';
     return fileName;
 }
-
